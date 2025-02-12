@@ -6,46 +6,123 @@
     <title>เกมความจำ</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Arial', sans-serif;
+            background-color: #f7f7f7;
             text-align: center;
+        }
+        h1 {
+            color: #6c757d;
         }
         .game-board {
             display: grid;
-            grid-template-columns: repeat(4, 100px);
-            grid-gap: 10px;
+            grid-template-columns: repeat(4, 120px);
+            grid-gap: 15px;
             justify-content: center;
             margin-top: 20px;
         }
         .card {
-            width: 100px;
-            height: 100px;
-            background-color: #007bff;
+            width: 120px;
+            height: 120px;
+            background-color: #4CAF50;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
+            font-size: 28px;
             color: white;
             cursor: pointer;
             border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease;
         }
         .card.flipped {
             background-color: #fff;
             color: #000;
-            cursor: default;
+            transform: rotateY(180deg);
+        }
+        .card:hover {
+            transform: scale(1.1);
+        }
+        #timer, #message, #animeCharacterMessage {
+            font-size: 22px;
+            margin-top: 10px;
+            color: #007bff;
+        }
+        #nameForm {
+            margin-top: 20px;
+        }
+        input[type="text"] {
+            padding: 10px;
+            font-size: 18px;
+            border-radius: 5px;
+        }
+        .leaderboard {
+            margin-top: 30px;
+            font-size: 18px;
+        }
+        canvas {
+            margin-top: 20px;
         }
     </style>
 </head>
 <body>
 
     <h1>เกมความจำ</h1>
+    
+    <div id="nameForm">
+        <label for="playerName">ใส่ชื่อผู้เล่น: </label>
+        <input type="text" id="playerName" placeholder="กรุณากรอกชื่อ">
+        <button onclick="startGame()">เริ่มเกม</button>
+    </div>
+    
     <div class="game-board" id="gameBoard"></div>
+    <p id="timer">เวลา: 60</p>
     <p id="message"></p>
+    <p id="animeCharacterMessage">มิวมิว: กำลังรอ...</p>
+    
+    <div class="leaderboard" id="leaderboard"></div>
+    
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
 
     <script>
         const symbols = ["🍎", "🍌", "🍒", "🍇", "🍉", "🥭", "🍍", "🍓"];
-        let cards = [...symbols, ...symbols]; // สร้างคู่ของการ์ด
+        let cards = [...symbols, ...symbols];
         let flippedCards = [];
         let matchedPairs = 0;
+        let timer = 60;
+        let playerName = '';
+        let leaderboard = JSON.parse(localStorage.getItem('leaderboard')) || [];
+        let timerInterval;
+        
+        // Sound effects
+        const flipSound = new Audio('flip_sound.mp3');
+        const winSound = new Audio('win_sound.mp3');
+        const loseSound = new Audio('lose_sound.mp3');
+        const backgroundMusic = new Audio('background_music.mp3');
+        backgroundMusic.loop = true;
+
+        // Three.js setup for 3D character
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('3dCharacterCanvas') });
+        renderer.setSize(300, 300);
+        document.body.appendChild(renderer.domElement);
+
+        const loader = new THREE.GLTFLoader();
+        loader.load('anime_character.glb', function(gltf) {
+            scene.add(gltf.scene);
+            gltf.scene.scale.set(2, 2, 2);
+            gltf.scene.position.set(0, -1, 0);
+        });
+
+        camera.position.z = 5;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
 
         function shuffle(array) {
             for (let i = array.length - 1; i > 0; i--) {
@@ -70,6 +147,7 @@
 
         function flipCard() {
             if (flippedCards.length < 2 && !this.classList.contains("flipped")) {
+                flipSound.play();
                 this.textContent = this.dataset.symbol;
                 this.classList.add("flipped");
                 flippedCards.push(this);
@@ -85,7 +163,11 @@
             if (card1.dataset.symbol === card2.dataset.symbol) {
                 matchedPairs++;
                 if (matchedPairs === symbols.length) {
-                    document.getElementById("message").textContent = "คุณชนะแล้ว!";
+                    winSound.play();
+                    document.getElementById("message").textContent = `คุณชนะแล้ว!`;
+                    giveEncouragement("เยี่ยม! คุณชนะแล้ว!");
+                    clearInterval(timerInterval);
+                    saveScore();
                 }
             } else {
                 card1.textContent = "";
@@ -96,7 +178,53 @@
             flippedCards = [];
         }
 
-        createBoard();
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                timer--;
+                document.getElementById("timer").textContent = `เวลา: ${timer}`;
+                if (timer === 0) {
+                    clearInterval(timerInterval);
+                    loseSound.play();
+                    document.getElementById("message").textContent = "หมดเวลา! คุณแพ้!";
+                    giveEncouragement("ไม่เป็นไร! ลองใหม่อีกครั้ง!");
+                }
+            }, 1000);
+        }
+
+        function saveScore() {
+            const timeTaken = 60 - timer;
+            leaderboard.push({ name: playerName, time: timeTaken });
+            leaderboard.sort((a, b) => a.time - b.time);
+            if (leaderboard.length > 5) leaderboard = leaderboard.slice(0, 5);
+            localStorage.setItem('leaderboard', JSON.stringify(leaderboard));
+            displayLeaderboard();
+        }
+
+        function displayLeaderboard() {
+            const leaderboardElement = document.getElementById("leaderboard");
+            leaderboardElement.innerHTML = "<h2>ตารางอันดับ</h2>";
+            leaderboard.forEach(entry => {
+                leaderboardElement.innerHTML += `<p>${entry.name}: ${entry.time} วินาที</p>`;
+            });
+        }
+
+        function giveEncouragement(message) {
+            document.getElementById("animeCharacterMessage").textContent = `ตัวละคร: ${message}`;
+        }
+
+        function startGame() {
+            playerName = document.getElementById("playerName").value;
+            if (!playerName) {
+                alert("กรุณากรอกชื่อผู้เล่น");
+                return;
+            }
+            document.getElementById("nameForm").style.display = "none";
+            backgroundMusic.play();
+            createBoard();
+            startTimer();
+        }
+
+        displayLeaderboard();
     </script>
 
 </body>
